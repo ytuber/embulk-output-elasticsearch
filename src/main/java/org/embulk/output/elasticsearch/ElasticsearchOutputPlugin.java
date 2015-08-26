@@ -113,13 +113,7 @@ public class ElasticsearchOutputPlugin
         // check that id is included in the schema or not if the id is not null.
         if (task.getId().isPresent()) {
             String id = task.getId().get();
-            boolean found = false;
-            for (Column column : schema.getColumns()) {
-                if (column.equals(id)) {
-                    found = true;
-                }
-            }
-            checkState(found, "id is not included in column names of the Schema.");
+            schema.lookupColumn(id);
         }
 
         try {
@@ -246,6 +240,10 @@ public class ElasticsearchOutputPlugin
             pageReader = new PageReader(schema);
         }
 
+        Column getIdColumn() {
+          pageReader.getSchema().lookupColumn(id);
+        }
+
         @Override
         public void add(Page page)
         {
@@ -342,7 +340,14 @@ public class ElasticsearchOutputPlugin
                     });
 
                     contextBuilder.endObject();
-                    bulkProcessor.add(newIndexRequest().source(contextBuilder));
+
+                    if (id == null) {
+                        bulkProcessor.add(newIndexRequest().id(id).source(contextBuilder));
+                    } else {
+                      if (!pageReader.isNull(getIdColumn())) {
+                        bulkProcessor.add(newIndexRequest().id(pageReader.getString(getIdColumn())).source(contextBuilder));
+                      }
+                    }
 
                 } catch (IOException e) {
                     Throwables.propagate(e); //  TODO error handling
@@ -352,7 +357,7 @@ public class ElasticsearchOutputPlugin
 
         private IndexRequest newIndexRequest()
         {
-            return Requests.indexRequest(index).type(type).id(id);
+            return Requests.indexRequest(index).type(type);
         }
 
         @Override
